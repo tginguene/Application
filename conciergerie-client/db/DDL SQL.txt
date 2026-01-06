@@ -1,0 +1,277 @@
+BEGIN;
+
+-- =====================================================
+-- 0) RESET TOTAL DU SCHEMA (DEV ONLY)
+-- =====================================================
+DROP SCHEMA IF EXISTS public CASCADE;
+CREATE SCHEMA public;
+
+-- Droits par défaut (optionnel mais recommandé)
+GRANT ALL ON SCHEMA public TO postgres;
+GRANT ALL ON SCHEMA public TO public;
+
+-- S'assure que les créations vont dans public
+SET search_path TO public;
+
+-- =====================================================
+-- 1) EXTENSIONS
+-- =====================================================
+CREATE EXTENSION IF NOT EXISTS citext;
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+
+-- =====================================================
+-- 2) ENUMS METIER (FR)
+-- =====================================================
+
+DO $$ BEGIN
+  CREATE TYPE plateforme_t AS ENUM ('AIRBNB','BOOKING','VRBO','DIRECT','AUTRE');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE statut_reservation_t AS ENUM ('DEMANDE','CONFIRMEE','ANNULEE','TERMINEE');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE type_prestataire_t AS ENUM ('MENAGE','BLANCHISSERIE','MAINTENANCE','CHECKIN','AUTRE');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE type_tache_t AS ENUM (
+    'MENAGE','BLANCHISSERIE','MAINTENANCE','CHECKIN','CHECKOUT','INSPECTION','APPROVISIONNEMENT','AUTRE'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE statut_tache_t AS ENUM ('A_FAIRE','ASSIGNEE','EN_COURS','TERMINEE','ANNULEE');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE statut_facture_t AS ENUM ('BROUILLON','ENVOYEE','PAYEE','ANNULEE');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE type_ligne_facture_t AS ENUM ('COMMISSION','MENAGE','MAINTENANCE','FOURNITURES','AUTRE');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE sens_paiement_t AS ENUM ('ENTRANT','SORTANT');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE moyen_paiement_t AS ENUM ('CARTE','VIREMENT','ESPECES','AUTRE');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE statut_paiement_t AS ENUM ('EN_ATTENTE','VALIDE','ECHEC');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+-- =====================================================
+-- 3) TABLES
+-- =====================================================
+
+-- PROPRIETAIRES
+CREATE TABLE proprietaire (
+  proprietaire_id BIGSERIAL PRIMARY KEY,
+  nom_complet     TEXT NOT NULL,
+  email           CITEXT NOT NULL UNIQUE,
+  telephone       TEXT,
+  adresse_facturation TEXT,
+  iban_paiement   TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- LOGEMENTS
+CREATE TABLE logement (
+  logement_id     BIGSERIAL PRIMARY KEY,
+  proprietaire_id BIGINT NOT NULL REFERENCES proprietaire(proprietaire_id) ON DELETE RESTRICT,
+  nom             TEXT NOT NULL,
+  adresse_ligne1  TEXT NOT NULL,
+  adresse_ligne2  TEXT,
+  ville           TEXT NOT NULL,
+  code_postal     TEXT NOT NULL,
+  pays            TEXT NOT NULL DEFAULT 'FR',
+  timezone        TEXT NOT NULL DEFAULT 'Europe/Paris',
+  capacite        INT NOT NULL CHECK (capacite >= 1),
+  chambres        INT NOT NULL DEFAULT 0 CHECK (chambres >= 0),
+  lits            INT NOT NULL DEFAULT 0 CHECK (lits >= 0),
+  salles_de_bain  NUMERIC(4,2) NOT NULL DEFAULT 0 CHECK (salles_de_bain >= 0),
+  heure_checkin   TIME NOT NULL DEFAULT '16:00',
+  heure_checkout  TIME NOT NULL DEFAULT '11:00',
+  type_acces      TEXT DEFAULT 'KEYBOX',
+  instructions_acces TEXT,
+  statut          TEXT DEFAULT 'ACTIVE',
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- VOYAGEURS
+CREATE TABLE voyageur (
+  voyageur_id BIGSERIAL PRIMARY KEY,
+  nom_complet TEXT NOT NULL,
+  email       CITEXT,
+  telephone   TEXT,
+  nationalite TEXT,
+  notes       TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT voyageur_contact_chk CHECK (email IS NOT NULL OR telephone IS NOT NULL)
+);
+
+-- RESERVATIONS
+CREATE TABLE reservation (
+  reservation_id BIGSERIAL PRIMARY KEY,
+  logement_id    BIGINT NOT NULL REFERENCES logement(logement_id) ON DELETE RESTRICT,
+  plateforme     plateforme_t NOT NULL DEFAULT 'DIRECT',
+  ref_plateforme TEXT,
+  voyageur_id    BIGINT NOT NULL REFERENCES voyageur(voyageur_id) ON DELETE RESTRICT,
+  statut         statut_reservation_t NOT NULL DEFAULT 'CONFIRMEE',
+  date_arrivee   DATE NOT NULL,
+  date_depart    DATE NOT NULL,
+  nb_voyageurs   INT NOT NULL CHECK (nb_voyageurs >= 1),
+  montant_total  NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (montant_total >= 0),
+  devise         CHAR(3) NOT NULL DEFAULT 'EUR',
+  montant_reverse NUMERIC(12,2) DEFAULT 0 CHECK (montant_reverse >= 0),
+  frais_menage   NUMERIC(12,2) DEFAULT 0 CHECK (frais_menage >= 0),
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  CONSTRAINT reservation_dates_chk CHECK (date_depart > date_arrivee),
+
+  -- ref_plateforme obligatoire sauf DIRECT (où elle doit être NULL)
+  CONSTRAINT reservation_ref_plateforme_chk CHECK (
+    (plateforme = 'DIRECT' AND ref_plateforme IS NULL)
+    OR
+    (plateforme <> 'DIRECT' AND ref_plateforme IS NOT NULL)
+  ),
+
+  -- Unicité des références plateforme (NULL autorisés)
+  CONSTRAINT reservation_plateforme_ref_uniq UNIQUE (plateforme, ref_plateforme)
+);
+
+-- PRESTATAIRES
+CREATE TABLE prestataire (
+  prestataire_id BIGSERIAL PRIMARY KEY,
+  societe        TEXT NOT NULL,
+  contact        TEXT,
+  email          CITEXT,
+  telephone      TEXT,
+  type_prestataire type_prestataire_t NOT NULL DEFAULT 'AUTRE',
+  adresse        TEXT,
+  actif          BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- TACHES
+CREATE TABLE tache (
+  tache_id       BIGSERIAL PRIMARY KEY,
+  logement_id    BIGINT NOT NULL REFERENCES logement(logement_id) ON DELETE RESTRICT,
+  reservation_id BIGINT REFERENCES reservation(reservation_id) ON DELETE SET NULL,
+  type_tache     type_tache_t NOT NULL,
+  titre          TEXT NOT NULL,
+  description    TEXT,
+  debut_prevu    TIMESTAMPTZ,
+  fin_prevue     TIMESTAMPTZ,
+  statut         statut_tache_t NOT NULL DEFAULT 'A_FAIRE',
+  prestataire_id BIGINT REFERENCES prestataire(prestataire_id) ON DELETE SET NULL,
+  cout_estime    NUMERIC(12,2) CHECK (cout_estime >= 0),
+  cout_reel      NUMERIC(12,2) CHECK (cout_reel >= 0),
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT tache_dates_chk CHECK (
+    fin_prevue IS NULL OR debut_prevu IS NULL OR fin_prevue >= debut_prevu
+  )
+);
+
+-- FACTURES
+CREATE TABLE facture (
+  facture_id     BIGSERIAL PRIMARY KEY,
+  proprietaire_id BIGINT NOT NULL REFERENCES proprietaire(proprietaire_id) ON DELETE RESTRICT,
+  periode_debut  DATE NOT NULL,
+  periode_fin    DATE NOT NULL,
+  statut         statut_facture_t NOT NULL DEFAULT 'BROUILLON',
+  devise         CHAR(3) NOT NULL DEFAULT 'EUR',
+  total_ht       NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (total_ht >= 0),
+  total_tva      NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (total_tva >= 0),
+  total_ttc      NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (total_ttc >= 0),
+  date_emission  TIMESTAMPTZ,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT facture_periode_chk CHECK (periode_fin >= periode_debut)
+);
+
+-- LIGNES DE FACTURE
+CREATE TABLE facture_ligne (
+  facture_ligne_id BIGSERIAL PRIMARY KEY,
+  facture_id   BIGINT NOT NULL REFERENCES facture(facture_id) ON DELETE CASCADE,
+  logement_id  BIGINT REFERENCES logement(logement_id) ON DELETE SET NULL,
+  reservation_id BIGINT REFERENCES reservation(reservation_id) ON DELETE SET NULL,
+  type_ligne   type_ligne_facture_t NOT NULL,
+  description TEXT NOT NULL,
+  quantite    NUMERIC(12,3) NOT NULL DEFAULT 1 CHECK (quantite > 0),
+  prix_unitaire NUMERIC(12,2) NOT NULL DEFAULT 0,
+  montant_ht  NUMERIC(12,2) NOT NULL DEFAULT 0,
+  taux_tva    NUMERIC(5,2) NOT NULL DEFAULT 0 CHECK (taux_tva >= 0)
+);
+
+-- PAIEMENTS
+CREATE TABLE paiement (
+  paiement_id BIGSERIAL PRIMARY KEY,
+  sens        sens_paiement_t NOT NULL,
+  moyen       moyen_paiement_t NOT NULL DEFAULT 'VIREMENT',
+  montant     NUMERIC(12,2) NOT NULL CHECK (montant >= 0),
+  devise      CHAR(3) NOT NULL DEFAULT 'EUR',
+  date_paiement TIMESTAMPTZ,
+  facture_id  BIGINT REFERENCES facture(facture_id) ON DELETE SET NULL,
+  prestataire_id BIGINT REFERENCES prestataire(prestataire_id) ON DELETE SET NULL,
+  statut      statut_paiement_t NOT NULL DEFAULT 'EN_ATTENTE',
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  CONSTRAINT paiement_lien_chk CHECK (
+    (sens = 'ENTRANT' AND facture_id IS NOT NULL AND prestataire_id IS NULL)
+    OR
+    (sens = 'SORTANT' AND prestataire_id IS NOT NULL AND facture_id IS NULL)
+  )
+);
+
+-- =====================================================
+-- 4) CONTRAINTE MVP++ : ANTI-CHEVAUCHEMENT
+-- - Bloque les chevauchements pour DEMANDE/CONFIRMEE
+-- - Autorise ANNULEE/TERMINEE à ne pas bloquer
+-- =====================================================
+ALTER TABLE reservation
+  ADD CONSTRAINT reservation_no_overlap_active
+  EXCLUDE USING gist (
+    logement_id WITH =,
+    daterange(date_arrivee, date_depart, '[)') WITH &&
+  )
+  WHERE (statut IN ('DEMANDE','CONFIRMEE'));
+
+-- =====================================================
+-- 5) INDEXES (performance de base)
+-- =====================================================
+CREATE INDEX idx_logement_proprietaire ON logement(proprietaire_id);
+CREATE INDEX idx_logement_ville_statut ON logement(ville, statut);
+
+CREATE INDEX idx_voyageur_email ON voyageur(email);
+
+CREATE INDEX idx_reservation_logement_dates ON reservation(logement_id, date_arrivee, date_depart);
+CREATE INDEX idx_reservation_statut_arrivee ON reservation(statut, date_arrivee);
+CREATE INDEX idx_reservation_plateforme_ref ON reservation(plateforme, ref_plateforme);
+
+CREATE INDEX idx_tache_logement_debut ON tache(logement_id, debut_prevu);
+CREATE INDEX idx_tache_statut_debut ON tache(statut, debut_prevu);
+CREATE INDEX idx_tache_prestataire ON tache(prestataire_id);
+
+CREATE INDEX idx_facture_proprietaire_periode ON facture(proprietaire_id, periode_debut, periode_fin);
+CREATE INDEX idx_facture_statut ON facture(statut);
+
+CREATE INDEX idx_paiement_facture ON paiement(facture_id);
+CREATE INDEX idx_paiement_prestataire ON paiement(prestataire_id);
+CREATE INDEX idx_paiement_date ON paiement(date_paiement);
+
+COMMIT;

@@ -1,0 +1,251 @@
+/* ========== Base “pro” : rem, container, max-width, lisibilité ========== */
+:root {
+  --max: 1100px;
+  --pad: 1.25rem;  /* 20px env. */
+  --radius: 1rem;  /* 16px env. */
+  --shadow: 0 8px 30px rgba(0, 0, 0, 0.06);
+  --border: 1px solid rgba(0, 0, 0, 0.08);
+  --muted: rgba(0, 0, 0, 0.65);
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+a { color: inherit; text-decoration: none; }
+
+.container {
+  max-width: var(--max);
+  margin: 0 auto;               /* ✅ centre */
+  padding: 0 var(--pad);        /* ✅ padding latéral */
+}
+
+.app { min-height: 100vh; }
+
+/* ========== Header ========== */
+.header {
+  position: sticky;
+  top: 0;
+  background: white;
+  border-bottom: var(--border);
+}
+
+.header__inner {
+  max-width: var(--max);
+  margin: 0 auto;
+  padding: 0.9rem var(--pad);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.brand__logo {
+  height: 10rem;   /* ✅ taille contrôlée */
+  width: auto;
+}
+
+.brand__name {
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.brand__tagline {
+  font-size: 0.95rem;
+  color: var(--muted);
+}
+
+/* Nav */
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.nav__link {
+  font-size: 0.95rem;
+  color: var(--muted);
+}
+
+.nav__cta {
+  padding: 0.55rem 0.85rem;
+  border: var(--border);
+  border-radius: 999px;
+  color: rgba(0, 0, 0, 0.85);
+}
+
+/* ========== Hero (flex qui devient colonne) ========== */
+.hero {
+  padding: 2rem 0;
+  display: grid;                 /* ✅ grid : simple & responsive */
+  grid-template-columns: 1.4fr 1fr;
+  gap: 1.25rem;
+  align-items: stretch;
+}
+
+.hero__title {
+  margin: 0 0 0.6rem 0;
+  font-size: 2rem;               /* ✅ en rem */
+  line-height: 1.15;
+}
+
+.hero__subtitle {
+  margin: 0 0 1rem 0;
+  color: var(--muted);
+  font-size: 1.05rem;
+  line-height: 1.6;
+}
+
+.hero__actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;               /* ✅ wrap si pas la place */
+}
+
+.panel {
+  border: var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 1rem;
+  height: 100%;
+}
+
+.panel__title {
+  font-weight: 700;
+  margin-bottom: 0.6rem;
+}
+
+.panel__list {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: var(--muted);
+}
+
+/* ========== Sections ========== */
+.section {
+  padding: 1.5rem 0 2.2rem;
+}
+
+.section__title {
+  margin: 0 0 1rem 0;
+  font-size: 1.35rem;
+}
+
+/* ✅ Cards en grid : 3 colonnes -> 2 -> 1 */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+
+.card {
+  border: var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  box-shadow: var(--shadow);
+}
+
+.card__title { margin: 0 0 0.4rem 0; }
+.card__text  { margin: 0; color: var(--muted); line-height: 1.6; }
+
+/* ========== Boutons & inputs ========== */
+.btn {
+  border: 0;
+  border-radius: 0.9rem;
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.btn--primary {
+  background: rgba(0, 0, 0, 0.9);
+  color: white;
+}
+
+.btn--ghost {
+  background: transparent;
+  border: var(--border);
+}
+
+.input {
+  width: 100%;
+  padding: 0.8rem 0.9rem;
+  border-radius: 0.9rem;
+  border: var(--border);
+  font-size: 1rem;
+}
+
+/* Contact : input + bouton */
+.contact {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.footer {
+  border-top: var(--border);
+  padding: 1rem 0;
+}
+
+.footer__inner {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  color: var(--muted);
+}
+
+.muted { color: var(--muted); }
+
+/* ========== Breakpoint 1 : <= 900px (tablette) ========== */
+@media (max-width: 900px) {
+  .hero {
+    grid-template-columns: 1fr;   /* ✅ passe en 1 colonne */
+  }
+
+  .cards {
+    grid-template-columns: repeat(2, 1fr); /* ✅ 2 colonnes */
+  }
+}
+
+/* ========== Breakpoint 2 : <= 600px (mobile) ========== */
+@media (max-width: 600px) {
+  :root { --pad: 1rem; }          /* ✅ padding plus petit */
+
+  .brand__logo {
+    height: 8rem;               /* ✅ logo réduit sur mobile */
+  }
+
+  .nav {
+    gap: 0.6rem;
+  }
+
+  .nav__link {
+    font-size: 0.9rem;
+  }
+
+  .hero__title {
+    font-size: 1.55rem;
+  }
+
+  .cards {
+    grid-template-columns: 1fr;   /* ✅ 1 colonne */
+  }
+
+  .contact {
+    grid-template-columns: 1fr;   /* ✅ empile sur mobile */
+  }
+
+  .btn {
+    width: 100%;                  /* ✅ boutons full width */
+  }
+
+  .footer__inner {
+    flex-direction: column;
+  }
+}

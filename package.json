@@ -1,0 +1,14 @@
+{
+  "name": "conciergerie",
+  "private": true,
+  "workspaces": [
+    "backoffice-web",
+    "backoffice-api"
+  ],
+  "scripts": {
+    "dev": "npm -w backoffice-api run dev concurrently npm -w backoffice-web run dev",
+    "dev:web": "npm -w backoffice-web run dev",
+    "dev:api": "npm -w backoffice-api run dev",
+    "build": "npm -w backoffice-api run build && npm -w backoffice-web run build"
+  }
+}
