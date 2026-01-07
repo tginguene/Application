@@ -46,6 +46,7 @@ apiV1.get("/proprietaires", async (req, res, next) => {
 });
 
 app.use("/api/v1", apiV1);
+
 // ===============================
 // ROUTE : POST /proprietaires
 // ===============================
@@ -87,6 +88,86 @@ apiV1.post("/proprietaires", async (req, res, next) => {
   }
 });
 
+// PUT /api/v1/proprietaires/:id
+apiV1.put("/proprietaires/:id", async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({
+        data: null,
+        error: { code: "VALIDATION", message: "id invalide" },
+      });
+    }
+
+    const {
+      nom_complet,
+      email,
+      telephone = null,
+      adresse_facturation = null,
+      iban_paiement = null,
+    } = req.body || {};
+
+    if (!nom_complet || !email) {
+      return res.status(400).json({
+        data: null,
+        error: { code: "VALIDATION", message: "nom_complet et email requis" },
+      });
+    }
+
+    const r = await pool.query(
+      `UPDATE proprietaire
+       SET nom_complet = $1,
+           email = $2,
+           telephone = $3,
+           adresse_facturation = $4,
+           iban_paiement = $5
+       WHERE proprietaire_id = $6
+       RETURNING proprietaire_id, nom_complet, email, telephone, adresse_facturation, iban_paiement, created_at`,
+      [nom_complet, email, telephone, adresse_facturation, iban_paiement, id]
+    );
+
+    if (r.rowCount === 0) {
+      return res.status(404).json({
+        data: null,
+        error: { code: "NOT_FOUND", message: "Propriétaire introuvable" },
+      });
+    }
+
+    res.json({ data: r.rows[0], error: null });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/v1/proprietaires/:id
+apiV1.delete("/proprietaires/:id", async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({
+        data: null,
+        error: { code: "VALIDATION", message: "id invalide" },
+      });
+    }
+
+    const r = await pool.query(
+      `DELETE FROM proprietaire WHERE proprietaire_id = $1`,
+      [id]
+    );
+
+    if (r.rowCount === 0) {
+      return res.status(404).json({
+        data: null,
+        error: { code: "NOT_FOUND", message: "Propriétaire introuvable" },
+      });
+    }
+
+    res.json({ data: { deleted: true }, error: null });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ===============================
 // MIDDLEWARE GLOBAL D’ERREURS
 // ⚠️ TOUJOURS À LA FIN
@@ -122,7 +203,7 @@ app.use((err, req, res, next) => {
 // ===============================
 // LANCEMENT DU SERVEUR
 // ===============================
-app.listen(3001, () => {
-  console.log("🚀 API démarrée sur http://localhost:3001");
+app.listen(3001, "0.0.0.0", () => {
+  console.log("API sur http://0.0.0.0:3001");
 });
 
